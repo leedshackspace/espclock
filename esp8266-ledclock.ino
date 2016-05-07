@@ -201,6 +201,9 @@ void setupTime() {
   setSyncInterval(settings.interval);
 }
 
+
+#if 0
+
 // ======== Display constants.
 #define _A_ 0x80
 #define _B_ 0x40
@@ -211,6 +214,24 @@ void setupTime() {
 #define _G_ 0x02
 #define _DP_ 0x01
 
+#else
+
+//  8    A
+// 7 2  F B
+//  6    G
+// 5 3  E C
+//  4 1  D P
+
+#define _A_ 0x01
+#define _B_ 0x40
+#define _C_ 0x20
+#define _D_ 0x10
+#define _E_ 0x08
+#define _F_ 0x02
+#define _G_ 0x04
+#define _DP_ 0x80
+
+#endif
 
 #define DATA 0
 #define CLOCK 1
@@ -244,7 +265,7 @@ const char segments[] = {
   0, // 0x18
 };
   
-char digits[4];
+char digits[6];
 char decimals;
 
 #define PULSE digitalWrite(CLOCK, LOW); delayMicroseconds(10) ; digitalWrite(CLOCK, HIGH); delayMicroseconds(10) ;
@@ -258,12 +279,13 @@ void clear() {
 }
 
 void display() {
-  char i, d, digit;
+  char i, n, d, digit;
 
   digitalWrite(BLANK, LOW);
 
   clear();
-  for (d = 0 ; d < 4 ; d++) {
+  for (n = 0 ; n < 6 ; n++) {
+    d = 5 - n;
     digit = segments[digits[d]];
 
     if ((decimals >> d & 0x1) == 0x1) digit |= _DP_;
@@ -286,12 +308,12 @@ void displayAP() {
 }
 
 void displayDash() {
-  digits[0] = digits[1] = digits[2] = digits[3] = 0x11;
+  digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = 0x11;
   display();
 }
 
 void clearDigits() {
-  digits[0] = digits[1] = digits[2] = digits[3] = 0x18;
+  digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = 0x18;
 }
 
 // Twirler handler.
@@ -356,23 +378,22 @@ char displayIP() {
 // end Ip display handler.
 
 void displayClock() {
-  int h = hour();
-  int m = minute();
-  digits[0] = digits[1] = digits[2] = digits[3] = decimals = 0;
+  time_t t = now();
+  int h = hour(t);
+  int m = minute(t);
+  int s = second(t);
+  digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = decimals = 0;
 
-  if (h > 19) digits[3] = 2;
-  else if (h > 9) digits[3] = 1;
-  digits[2] = h % 10;
+  digits[5] = h / 10;
+  digits[4] = h % 10;
 
-  if (m > 49) digits[1] = 5;
-  else if (m > 39) digits[1] = 4;
-  else if (m > 29) digits[1] = 3;
-  else if (m > 19) digits[1] = 2;
-  else if (m > 9) digits[1] = 1;
+  digits[3] = m / 10;
+  digits[2] = m % 10;
 
-  digits[0] = m % 10;
+  digits[1] = s / 10;
+  digits[0] = s % 10;
 
-  if (second() & 0x1) decimals = 0x4;
+  if ((second() & 0x1) == 0) decimals = 0x14;
   if (timeStatus() != timeSet) decimals |= 0x1;
   display();
 }
