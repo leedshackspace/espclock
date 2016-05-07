@@ -23,8 +23,6 @@ ESP8266WebServer server (80);
 
 String httpUpdateResponse;
 
-time_t prevDisplay = 0;
-
 void handleRoot() {
   String s = MAIN_page;
   s.replace("@@SSID@@", settings.ssid);
@@ -142,10 +140,7 @@ void loop() {
   if (displayIP()) return;
   if (clockMode == MODE_CLOCK) {
     if (timeStatus() != timeNotSet) {
-      if (now() != prevDisplay) { //update the display only if time has changed
-        prevDisplay = now();
-        displayClock();  
-      }
+      displayClock();
     }
   }
 }
@@ -377,11 +372,46 @@ char displayIP() {
 
 // end Ip display handler.
 
+static uint32_t next_tick;
+static time_t displayed_time;
+static bool half;
+static int good_ticks;
+
+#define MAX_GOOD_TICKS 10
+#define JITTER 200
+
+#define JUMP_SECONDS 30
+
 void displayClock() {
-  time_t t = now();
-  int h = hour(t);
-  int m = minute(t);
-  int s = second(t);
+  int32_t dt;
+
+  dt = millis() - next_tick;
+  if (dt < -1000 || dt > 1000)
+    next_tick = millis();
+  if (dt < 0)
+    return;
+  next_tick += 500;
+  if (good_ticks == 0) {
+      next_tick += random(-JITTER, JITTER + 1);
+      good_ticks = random(MAX_GOOD_TICKS + 1);
+  } else {
+      good_ticks--;
+  }
+  half = !half;
+  if (half)
+    displayed_time++;
+
+  dt = now() - displayed_time;
+  if (dt > JUMP_SECONDS || dt < -JUMP_SECONDS) {
+    displayed_time = now();
+    randomSeed(displayed_time);
+  } else {
+    next_tick += dt;
+  }
+
+  int h = hour(displayed_time);
+  int m = minute(displayed_time);
+  int s = second(displayed_time);
   digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = decimals = 0;
 
   digits[5] = h / 10;
@@ -393,7 +423,7 @@ void displayClock() {
   digits[1] = s / 10;
   digits[0] = s % 10;
 
-  if ((second() & 0x1) == 0) decimals = 0x14;
+  if (half) decimals = 0x14;
   if (timeStatus() != timeSet) decimals |= 0x1;
   display();
 }
