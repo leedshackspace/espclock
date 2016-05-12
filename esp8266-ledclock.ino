@@ -459,8 +459,6 @@ void displayClock() {
     return;
   if (displayed_time == 0)
     return;
-  if (!space_open)
-    return;
 
   cur_millis = millis();
   if (last_millis != 0) {
@@ -471,6 +469,7 @@ void displayClock() {
   if (next_tick > 0) {
     return;
   }
+
   next_tick += 500;
   if (good_ticks == 0) {
       next_tick += random(-JITTER, JITTER + 1);
@@ -483,6 +482,9 @@ void displayClock() {
     displayed_time++;
 
   next_tick += skew;
+
+  if (!space_open)
+    return;
 
   TimeElements tm;
   breakTime(displayed_time, tm);
