@@ -6,6 +6,7 @@ LIBS ?= $(ESP_LIBS)/Wire \
         Time \
         $(ESP_LIBS)/ESP8266WiFi \
         $(ESP_LIBS)/ESP8266mDNS \
-        $(ESP_LIBS)/ESP8266WebServer
+        $(ESP_LIBS)/ESP8266WebServer \
+        $(ESP_LIBS)/ESP8266HTTPClient
 
 include ../makeEspArduino/makeEspArduino.mk

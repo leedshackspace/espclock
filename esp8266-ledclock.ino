@@ -8,6 +8,7 @@
 #include <WiFiServer.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
 
 #include "settings.h"
 #include "mainPage.h"
@@ -18,6 +19,21 @@
 #define MODE_SETUP 0
 #define MODE_CLOCK 1
 int clockMode;
+
+#define OPEN_POLL_SECONDS 5
+
+static time_t displayed_time;
+static int skew;
+static bool half;
+static int good_ticks;
+static bool space_open = true;
+
+
+#define TICK_MS 5
+#define MAX_GOOD_TICKS 10
+#define JITTER 200
+
+#define JUMP_SECONDS 30
 
 ESP8266WebServer server (80);
 
@@ -125,6 +141,8 @@ void handleForm() {
   }
 }
 
+Ticker clock_ticker;
+
 void setup() {
   setupDisplay();
   pinMode(SETUP_PIN, INPUT_PULLUP);
@@ -133,16 +151,70 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/form", handleForm);
   server.begin();
+  clock_ticker.attach_ms(TICK_MS, displayClock);
+}
+
+static void
+open_space()
+{
+  if (space_open)
+    return;
+  space_open = true;
+}
+
+static void
+close_space()
+{
+  if (!space_open)
+    return;
+  space_open = false;
+  clearDigits();
+  display();
+}
+
+static void
+check_open()
+{
+  static uint32_t next_tick;
+  int32_t dt;
+  HTTPClient http;
+  int status;
+
+  if (next_tick == 0)
+    next_tick = millis();
+  dt = millis() - next_tick;
+  if (dt < 0)
+    return;
+  next_tick = millis() + OPEN_POLL_SECONDS * 1000;
+
+  http.begin("http://leedshackspace.org.uk/status.php");
+  status = http.GET();
+  if (status > 0) {
+      String payload = http.getString();
+      if (payload.indexOf("\"open\":true") >= 0)
+	open_space();
+      else
+	close_space();
+  }
+  http.end();
 }
 
 void loop() {
+  int32_t dt;
+  time_t current_time;
+
   server.handleClient();
-  if (displayIP()) return;
-  if (clockMode == MODE_CLOCK) {
-    if (timeStatus() != timeNotSet) {
-      displayClock();
-    }
+  if (clockMode == MODE_CLOCK && timeStatus() != timeNotSet) {
+      current_time = now();
+      dt = current_time - displayed_time;
+      if (dt > JUMP_SECONDS || dt < -JUMP_SECONDS) {
+	displayed_time = current_time;
+	randomSeed(displayed_time);
+      } else {
+	  skew = dt;
+      }
   }
+  check_open();
 }
 
 
@@ -265,22 +337,13 @@ char decimals;
 
 #define PULSE digitalWrite(CLOCK, LOW); delayMicroseconds(10) ; digitalWrite(CLOCK, HIGH); delayMicroseconds(10) ;
 
-void clear() {
-  char i;
-  digitalWrite(DATA, LOW);
-  for (i = 0 ; i < 32 ; i++) {
-    PULSE;
-  }
-}
-
 void display() {
   char i, n, d, digit;
 
   digitalWrite(BLANK, LOW);
 
-  clear();
   for (n = 0 ; n < 6 ; n++) {
-    d = 5 - n;
+    d = n;
     digit = segments[digits[d]];
 
     if ((decimals >> d & 0x1) == 0x1) digit |= _DP_;
@@ -295,10 +358,10 @@ void display() {
 }
 
 void displayAP() {
-  digits[0] = 0x10;
-  digits[1] = 0xA;
-  digits[2] = 0x18;
-  digits[3] = 0x18;
+  digits[3] = 0x10;
+  digits[2] = 0xA;
+  digits[1] = 0x18;
+  digits[0] = 0x18;
   display();
 }
 
@@ -344,18 +407,19 @@ void _displayIP() {
   if (dispOctet > 3) {
     ticker.detach();
     dispOctet = -1;
-    clockMode == MODE_CLOCK ? displayClock() : displayAP();
+    if (clockMode != MODE_CLOCK)
+      displayAP();
     return;
   }
   clearDigits();
   uint8_t octet = (uint32_t(clockMode == MODE_CLOCK ? WiFi.localIP() : WiFi.softAPIP()) >> (8 * dispOctet++)) & 0xff;
   uint8_t d = 0;
   for (; octet > 99 ; octet -= 100) d++;
-  digits[2] = d;
+  digits[0] = d;
   d = 0;
   for (; octet > 9 ; octet -= 10) d++;
   digits[1] = d;
-  digits[0] = octet;
+  digits[2] = octet;
   decimals = 0x1;
   display();
 }
@@ -367,29 +431,46 @@ char displayIP() {
   if (digitalRead(SETUP_PIN) == 1) return 0;
   dispOctet = 0;
   ticker.attach(1.0, _displayIP);
-  return 0;
+  return 1;
 }
 
 // end Ip display handler.
 
-static uint32_t next_tick;
-static time_t displayed_time;
-static bool half;
-static int good_ticks;
+void to_digits(char *digits, uint8_t val)
+{
+  uint8_t high = 0;
 
-#define MAX_GOOD_TICKS 10
-#define JITTER 200
-
-#define JUMP_SECONDS 30
+  while (val >= 10) {
+      high++;
+      val -= 10;
+  }
+  digits[0] = high;
+  digits[1] = val;
+}
 
 void displayClock() {
-  int32_t dt;
+  static int next_tick;
+  static uint32_t last_millis;
+  uint32_t cur_millis;
 
-  dt = millis() - next_tick;
-  if (dt < -1000 || dt > 1000)
-    next_tick = millis();
-  if (dt < 0)
+  if (displayIP())
     return;
+  if (clockMode != MODE_CLOCK)
+    return;
+  if (displayed_time == 0)
+    return;
+  if (!space_open)
+    return;
+
+  cur_millis = millis();
+  if (last_millis != 0) {
+    next_tick -= (cur_millis - last_millis);
+  }
+  last_millis = cur_millis;
+
+  if (next_tick > 0) {
+    return;
+  }
   next_tick += 500;
   if (good_ticks == 0) {
       next_tick += random(-JITTER, JITTER + 1);
@@ -401,30 +482,21 @@ void displayClock() {
   if (half)
     displayed_time++;
 
-  dt = now() - displayed_time;
-  if (dt > JUMP_SECONDS || dt < -JUMP_SECONDS) {
-    displayed_time = now();
-    randomSeed(displayed_time);
-  } else {
-    next_tick += dt;
-  }
+  next_tick += skew;
 
-  int h = hour(displayed_time);
-  int m = minute(displayed_time);
-  int s = second(displayed_time);
-  digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = decimals = 0;
+  TimeElements tm;
+  breakTime(displayed_time, tm);
+  int h = tm.Hour;
+  int m = tm.Minute;
+  int s = tm.Second;
+  decimals = 0;
 
-  digits[5] = h / 10;
-  digits[4] = h % 10;
+  to_digits(digits + 0, h);
+  to_digits(digits + 2, m);
+  to_digits(digits + 4, s);
 
-  digits[3] = m / 10;
-  digits[2] = m % 10;
-
-  digits[1] = s / 10;
-  digits[0] = s % 10;
-
-  if (half) decimals = 0x14;
-  if (timeStatus() != timeSet) decimals |= 0x1;
+  if (half) decimals = 0x0a;
+  //if (timeStatus() != timeSet) decimals |= 0x20;
   display();
 }
 
