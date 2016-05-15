@@ -13,6 +13,7 @@
 #include "settings.h"
 #include "mainPage.h"
 #include "espclock.h"
+#include "dst.h"
 
 #define SETUP_PIN 3
 
@@ -239,6 +240,21 @@ void sendNTPpacket(WiFiUDP *u) {
   }
 }
 
+int lookup_timezone(time_t utc)
+{
+  const tzentry *tz = tzdata;
+  int offset = 0;
+
+  while (tz->start) {
+      if (tz->start > utc) {
+	  break;
+      }
+      offset = tz->offset;
+      tz++;
+  }
+  return offset;
+}
+
 time_t getNtpTime()
 {
   WiFiUDP udp;
@@ -254,8 +270,11 @@ time_t getNtpTime()
          unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
          unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
          unsigned long secSince1900 = highWord << 16 | lowWord;
+	 time_t utc;
          udp.flush();
-         return secSince1900 - 2208988800UL + settings.timezone * SECS_PER_HOUR;
+         utc = secSince1900 - 2208988800UL + settings.timezone * SECS_PER_HOUR;
+	 utc += lookup_timezone(utc);
+	 return utc;
       }
       delay(10);
     }

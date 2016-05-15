@@ -10,3 +10,9 @@ LIBS ?= $(ESP_LIBS)/Wire \
         $(ESP_LIBS)/ESP8266HTTPClient
 
 include ../makeEspArduino/makeEspArduino.mk
+
+$(BUILD_INFO_H): dst.h
+
+dst.h: gen-dst.py
+	echo  $(<F)
+	./gen-dst.py dst.h
