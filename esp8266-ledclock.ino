@@ -372,6 +372,7 @@ void displayDash() {
 
 void clearDigits() {
   digits[0] = digits[1] = digits[2] = digits[3] = digits[4] = digits[5] = 0x18;
+  decimals = 0;
 }
 
 // Twirler handler.
