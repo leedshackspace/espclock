@@ -1,55 +1,14 @@
-# A(nother) NTP based clock for ESP8266 #
+# Leeds hackspace ESP8266 clock
 
-This is an LED clock driven by the amazing little ESP8266
-device. There are a few people who have made NTP clients
-for this device, but this one is thought out properly, and
-much easier to setup and use:
+Controller code for the large wallmounted LED clock.
 
-* Uses the cheapest ESP8266 module (the ESP-1).
-* Drives a 4-digit LED display via SPI.
-* Single button to begin configuration.
-* Browser based config entry.
+Each digit has a dedicated 8-bit shift register and drive electronics.
 
-The circuit is extremely basic, with the following parts:
+A pair of linear regulators supply 3.3v for the esp8266 and panel driver.
 
-* ESP-1 module.
-* 7-segment LED display (SPI interface)
-* 3.3v regulator (e.g LM1117)
-* Bypass cap
-* Button + pullup resistor.
+A boost converted generates ~30v for the LEDs (Each segment is 3 strings of 15 LEDs).
 
-The particular LED module I'm using is a Sure Electronics
-display. It runs off 5v, however the driver chips are 3.3v
-input compatible, obviating the need for a level converter.
+Ideal supply voltage is ~20v. It will work down to 12v, but the boost converter tends to get a bit warm at lower voltages.
 
-![LED Clock Diagram] (https://raw.githubusercontent.com/buxtronix/arduino/master/esp8266-ledclock/esp8266-clock.png)
-
-## Operation ##
-
-The clock has a simple interface, and does not require any software
-changes to set it up for your network.
-
-Setup:
-
-* Power on.
-* Within 5s press the button.
-* Display shows 'AP'.
-* Press the button to display the device IP address.
-* Connect to the 'ESP-CLOCK' SSID.
-* Point a browser to the device IP.
-* Configure Wifi credentials and time/ntp attributes.
-* After submitting, the clock connects to the given Wifi network and starts.
-
-During normal operation:
-
-* Press the button to display the device IP address.
-* Browse to that address to view the status and change config.
-* The lower right decimal point will be lit if NTP synchronisation
-is overdue (e.g couldnt connect to server).
-
-## Copyright ##
-
-The design and code is Copyright 2015 Ben Buxton. (bbuxton@gmail.com).
-
-Licenced under GPLv3.
-
+Pressing the button within 5 seconds of poweron will put the clock into setup mode.
+This provides an access point and web page to configure wifi and NTP settings.

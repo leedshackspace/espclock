@@ -21,7 +21,7 @@
 #define MODE_CLOCK 1
 int clockMode;
 
-#define OPEN_POLL_SECONDS 5
+//#define OPEN_POLL_SECONDS 5
 
 static time_t displayed_time;
 static int skew;
@@ -176,6 +176,7 @@ close_space()
 static void
 check_open()
 {
+#ifdef OPEN_POLL_SECONDS
   static uint32_t next_tick;
   int32_t dt;
   HTTPClient http;
@@ -190,7 +191,7 @@ check_open()
 
   http.begin("http://leedshackspace.org.uk/status.php");
   status = http.GET();
-  if (status > 0) {
+  if (status > 0 && status < 300) {
       String payload = http.getString();
       if (payload.indexOf("\"open\":true") >= 0)
 	open_space();
@@ -198,6 +199,7 @@ check_open()
 	close_space();
   }
   http.end();
+#endif
 }
 
 void loop() {
@@ -501,7 +503,7 @@ void displayClock() {
   if (half)
     displayed_time++;
 
-  next_tick += skew;
+  next_tick += skew * 10;
 
   if (!space_open)
     return;
